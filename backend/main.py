@@ -6,6 +6,8 @@ import config
 from database import Base, engine
 import models  # noqa: F401  (registers tables on Base.metadata)
 from auth_router import router as auth_router
+from auth_router import router as auth_router
+from papers_router import router as papers_router
 
 
 @asynccontextmanager
@@ -19,6 +21,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="QPMS", lifespan=lifespan)
 
 app.include_router(auth_router)
+app.include_router(auth_router)
+app.include_router(papers_router)
 
 app.add_middleware(
     CORSMiddleware,

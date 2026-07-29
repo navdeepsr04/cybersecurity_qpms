@@ -1,0 +1,8 @@
+mkdir -p qpms/backend/uploads
+cd qpms/backend
+
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+pip install fastapi "uvicorn[standard]" sqlalchemy "passlib[bcrypt]" bcrypt "python-jose[cryptography]" python-multipart pydantic email-validator
+pip freeze > requirements.txt

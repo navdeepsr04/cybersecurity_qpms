@@ -1,5 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from models import UserRole
+from datetime import datetime
+from typing import Optional
 
 
 class UserCreate(BaseModel):
@@ -43,3 +45,22 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class PaperOut(BaseModel):
+    id: int
+    title: str
+    subject: str
+    semester: str
+    original_filename: str
+    upload_date: datetime
+    status: str
+    rejection_reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PaperUpdate(BaseModel):
+    title: Optional[str] = None
+    subject: Optional[str] = None
+    semester: Optional[str] = None

@@ -23,6 +23,7 @@ class AuditAction:
     APPROVE = "APPROVE"
     REJECT = "REJECT"
     DELETE = "DELETE"
+    EDIT = "EDIT"
     ACCESS_DENIED = "ACCESS_DENIED"
 
 
