@@ -64,3 +64,31 @@ class PaperUpdate(BaseModel):
     title: Optional[str] = None
     subject: Optional[str] = None
     semester: Optional[str] = None
+
+class RejectPayload(BaseModel):
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_empty(cls, v):
+        if not v.strip():
+            raise ValueError("a rejection reason is required")
+        return v
+
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@field_validator("password")
+@classmethod
+def strong_password(cls, v):
+    if len(v) < 8:
+        raise ValueError("password must be at least 8 characters")
+    if not any(c.isupper() for c in v):
+        raise ValueError("password must contain at least one uppercase letter")
+    if not any(c.islower() for c in v):
+        raise ValueError("password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("password must contain at least one digit")
+    return v

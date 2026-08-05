@@ -6,3 +6,5 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 
 pip install fastapi "uvicorn[standard]" sqlalchemy "passlib[bcrypt]" bcrypt "python-jose[cryptography]" python-multipart pydantic email-validator
 pip freeze > requirements.txt
+
+uvicorn main:app --reload

@@ -6,6 +6,10 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
+from fastapi import Depends, HTTPException, Request, status   # Request added
+from models import User, AuditAction                          # AuditAction added
+from audit import log_action 
+
 import config
 from database import get_db
 from models import User
@@ -53,9 +57,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def require_role(*allowed_roles: str):
-    """Dependency factory: require_role(UserRole.ADMIN) protects an endpoint."""
-    def checker(user: User = Depends(get_current_user)) -> User:
+    """Dependency factory: require_role(UserRole.ADMIN) protects an endpoint.
+    Every rejection is itself an audited event -- unauthorized access
+    attempts are exactly what Accounting is supposed to catch."""
+    def checker(request: Request, user: User = Depends(get_current_user),
+                db: Session = Depends(get_db)) -> User:
         if user.role not in allowed_roles:
+            ip = request.client.host if request.client else None
+            log_action(db, AuditAction.ACCESS_DENIED, status="FAILURE", user=user, ip=ip,
+                       details=f"needed one of {allowed_roles}, path={request.url.path}")
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not enough permissions")
         return user
     return checker

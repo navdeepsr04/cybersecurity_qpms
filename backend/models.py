@@ -7,10 +7,12 @@ from database import Base
 
 class UserRole:
     ADMIN, FACULTY, STUDENT = "admin", "faculty", "student"
+    ALL = {ADMIN, FACULTY, STUDENT}
 
 
 class PaperStatus:
     PENDING, APPROVED, REJECTED = "pending", "approved", "rejected"
+    ALL = {PENDING, APPROVED, REJECTED}
 
 
 class AuditAction:
@@ -25,6 +27,7 @@ class AuditAction:
     DELETE = "DELETE"
     EDIT = "EDIT"
     ACCESS_DENIED = "ACCESS_DENIED"
+    USER_UPDATE = "USER_UPDATE"
 
 
 class User(Base):
