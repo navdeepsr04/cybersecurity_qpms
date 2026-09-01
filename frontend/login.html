@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QPMS — Sign in</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="center-shell">
+  <div class="card" style="width: 100%; max-width: 380px;">
+    <p class="eyebrow">Question Paper Management System</p>
+    <h1 id="formTitle" style="margin: 0 0 4px; font-size: 1.3rem;">Sign in</h1>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0 0 4px;">Secure access · role-based · audited</p>
+
+    <div id="msg" class="msg"></div>
+
+    <!-- LOGIN FORM -->
+    <form id="loginForm">
+      <label for="li_username">Username</label>
+      <input id="li_username" required autocomplete="username" />
+      <label for="li_password">Password</label>
+      <input id="li_password" type="password" required autocomplete="current-password" />
+      <div class="btn-row">
+        <button type="submit" style="flex:1">Sign in</button>
+      </div>
+    </form>
+
+    <!-- REGISTER FORM (hidden by default) -->
+    <form id="registerForm" style="display:none">
+      <label for="re_username">Username</label>
+      <input id="re_username" required minlength="3" maxlength="50" />
+      <label for="re_email">Email</label>
+      <input id="re_email" type="email" required />
+      <label for="re_password">Password</label>
+      <input id="re_password" type="password" required minlength="8"
+             title="At least 8 characters, with an uppercase letter, a lowercase letter, and a digit" />
+      <label for="re_role">Role</label>
+      <select id="re_role">
+        <option value="student">Student</option>
+        <option value="faculty">Faculty</option>
+      </select>
+      <p style="color: var(--text-muted); font-size: 0.72rem; margin-top: 4px;">
+        Admin accounts are not self-registrable and are provisioned separately.
+      </p>
+      <div class="btn-row">
+        <button type="submit" style="flex:1">Create account</button>
+      </div>
+    </form>
+
+    <p style="text-align:center; margin-top: 18px; font-size: 0.82rem; color: var(--text-muted);">
+      <a href="#" id="toggleLink">Need an account? Register</a>
+    </p>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  // If already logged in, skip straight to the dashboard.
+  if (decodeToken()) window.location.replace("dashboard.html");
+
+  const msg = document.getElementById("msg");
+  const loginForm = document.getElementById("loginForm");
+  const registerForm = document.getElementById("registerForm");
+  const toggleLink = document.getElementById("toggleLink");
+  const formTitle = document.getElementById("formTitle");
+  let showingLogin = true;
+
+  toggleLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    showingLogin = !showingLogin;
+    hideMsg(msg);
+    loginForm.style.display = showingLogin ? "block" : "none";
+    registerForm.style.display = showingLogin ? "none" : "block";
+    formTitle.textContent = showingLogin ? "Sign in" : "Create account";
+    toggleLink.textContent = showingLogin ? "Need an account? Register" : "Already have an account? Sign in";
+  });
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideMsg(msg);
+    const username = document.getElementById("li_username").value.trim();
+    const password = document.getElementById("li_password").value;
+
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username, password }),
+    });
+
+    if (!res.ok) {
+      showMsg(msg, await readError(res), "error");
+      return;
+    }
+    const data = await res.json();
+    setToken(data.access_token);
+    window.location.replace("dashboard.html");
+  });
+
+  registerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideMsg(msg);
+    const payload = {
+      username: document.getElementById("re_username").value.trim(),
+      email: document.getElementById("re_email").value.trim(),
+      password: document.getElementById("re_password").value,
+      role: document.getElementById("re_role").value,
+    };
+
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      showMsg(msg, await readError(res), "error");
+      return;
+    }
+    showMsg(msg, "Account created. You can sign in now.", "success");
+    toggleLink.click();
+    document.getElementById("li_username").value = payload.username;
+  });
+</script>
+</body>
+</html>

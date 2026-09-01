@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QPMS — Dashboard</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">QPMS <span>·</span> Dashboard</div>
+  <div class="who">
+    <span id="whoText"></span>
+    <button class="btn-ghost btn-sm" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="panel">
+    <h2>Welcome</h2>
+    <p class="hint" id="welcomeLine">Loading your record...</p>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="btn-row">
+      <button id="ctaBtn">Open workspace</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  const payload = requireAuth(); // any role
+  document.getElementById("whoText").innerHTML =
+    `${escapeHtml(payload.sub)} &nbsp;<span class="role-pill">${payload.role}</span>`;
+
+  const workspaceByRole = { faculty: "faculty.html", admin: "admin.html", student: "student.html" };
+  const ctaBtn = document.getElementById("ctaBtn");
+  ctaBtn.textContent = `Open ${payload.role} workspace`;
+  ctaBtn.addEventListener("click", () => window.location.href = workspaceByRole[payload.role]);
+
+  const welcomeLine = document.getElementById("welcomeLine");
+  const statGrid = document.getElementById("statGrid");
+
+  function stat(num, label) {
+    return `<div class="stat"><div class="num">${num}</div><div class="label">${label}</div></div>`;
+  }
+
+  async function loadStats() {
+    try {
+      if (payload.role === "faculty") {
+        const res = await apiFetch("/papers/mine");
+        const papers = await res.json();
+        const pending = papers.filter(p => p.status === "pending").length;
+        const approved = papers.filter(p => p.status === "approved").length;
+        const rejected = papers.filter(p => p.status === "rejected").length;
+        welcomeLine.textContent = "Here's the status of your uploaded question papers.";
+        statGrid.innerHTML = stat(papers.length, "Total uploaded") + stat(pending, "Pending") +
+                             stat(approved, "Approved") + stat(rejected, "Rejected");
+      } else if (payload.role === "admin") {
+        const [pendingRes, usersRes] = await Promise.all([
+          apiFetch("/admin/papers?status=pending"),
+          apiFetch("/admin/users"),
+        ]);
+        const pending = await pendingRes.json();
+        const users = await usersRes.json();
+        welcomeLine.textContent = "Here's what needs your attention right now.";
+        statGrid.innerHTML = stat(pending.length, "Awaiting review") + stat(users.length, "Total users");
+      } else if (payload.role === "student") {
+        const res = await apiFetch("/papers/search");
+        const papers = await res.json();
+        welcomeLine.textContent = "Here's what's currently available to you.";
+        statGrid.innerHTML = stat(papers.length, "Approved papers available");
+      }
+    } catch (err) {
+      welcomeLine.textContent = "Could not load your stats right now.";
+    }
+  }
+  loadStats();
+</script>
+</body>
+</html>

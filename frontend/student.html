@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QPMS — Student</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">QPMS <span>·</span> Student</div>
+  <div class="who">
+    <a href="dashboard.html" class="btn-ghost btn-sm" style="text-decoration:none; display:inline-block;">Dashboard</a>
+    <span id="whoText"></span>
+    <button class="btn-ghost btn-sm" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="panel">
+    <h2>Find question papers</h2>
+    <p class="hint">Only approved papers are searchable. Leave a field blank to match anything.</p>
+    <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap: wrap;">
+      <div style="flex:1; min-width:140px;">
+        <label for="s_title">Title</label>
+        <input id="s_title" placeholder="e.g. Midsem" />
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <label for="s_subject">Subject</label>
+        <input id="s_subject" placeholder="e.g. DBMS" />
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <label for="s_semester">Semester</label>
+        <input id="s_semester" placeholder="e.g. 4" />
+      </div>
+      <button id="searchBtn" style="margin-bottom:0;">Search</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Available papers</h2>
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Subject</th><th>Semester</th><th>Uploaded</th><th></th></tr>
+      </thead>
+      <tbody id="resultsBody"><tr class="empty-row"><td colspan="5">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  const payload = requireAuth("student");
+  document.getElementById("whoText").innerHTML =
+    `${escapeHtml(payload.sub)} &nbsp;<span class="role-pill">student</span>`;
+
+  const resultsBody = document.getElementById("resultsBody");
+  let papers = [];
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function render() {
+    if (!papers.length) {
+      resultsBody.innerHTML = `<tr class="empty-row"><td colspan="5">No approved papers match your search.</td></tr>`;
+      return;
+    }
+    resultsBody.innerHTML = papers.map((p) => `
+      <tr>
+        <td data-label="Title">${escapeHtml(p.title)}</td>
+        <td data-label="Subject">${escapeHtml(p.subject)}</td>
+        <td data-label="Semester">${escapeHtml(p.semester)}</td>
+        <td data-label="Uploaded" class="ts">${fmtDate(p.upload_date)}</td>
+        <td data-label="Download"><button class="btn-sm" onclick="downloadPaper(${p.id})">Download</button></td>
+      </tr>`).join("");
+  }
+
+  async function search() {
+    const params = new URLSearchParams();
+    const title = document.getElementById("s_title").value.trim();
+    const subject = document.getElementById("s_subject").value.trim();
+    const semester = document.getElementById("s_semester").value.trim();
+    if (title) params.set("title", title);
+    if (subject) params.set("subject", subject);
+    if (semester) params.set("semester", semester);
+
+    resultsBody.innerHTML = `<tr class="empty-row"><td colspan="5">Searching...</td></tr>`;
+    const res = await apiFetch(`/papers/search?${params.toString()}`);
+    papers = await res.json();
+    render();
+  }
+
+  // Downloads need the Authorization header, so a plain <a href> won't
+  // work -- fetch the file as a blob, then trigger the save via a
+  // temporary object URL.
+  async function downloadPaper(id) {
+    const p = papers.find((x) => x.id === id);
+    if (!p) return;
+    const res = await apiFetch(`/papers/download/${id}`);
+    if (!res.ok) { alert(await readError(res)); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = p.original_filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", search);
+  document.querySelectorAll("#s_title, #s_subject, #s_semester").forEach((el) => {
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+  });
+
+  search();
+</script>
+</body>
+</html>

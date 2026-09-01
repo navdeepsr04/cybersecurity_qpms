@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QPMS — Admin</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">QPMS <span>·</span> Admin</div>
+  <div class="who">
+    <a href="dashboard.html" class="btn-ghost btn-sm" style="text-decoration:none; display:inline-block;">Dashboard</a>
+    <span id="whoText"></span>
+    <button class="btn-ghost btn-sm" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<div class="page">
+
+  <div class="panel">
+    <h2>Paper review</h2>
+    <p class="hint">Approve or reject papers submitted by faculty. Only pending papers can be reviewed.</p>
+    <div class="tabs">
+      <button class="tab active" data-status="pending">Pending</button>
+      <button class="tab" data-status="approved">Approved</button>
+      <button class="tab" data-status="rejected">Rejected</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Subject</th><th>Semester</th><th>Uploaded by</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="papersBody"><tr class="empty-row"><td colspan="7">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>User management</h2>
+    <p class="hint">Change a user's role or active status. You cannot modify your own account here.</p>
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="usersBody"><tr class="empty-row"><td colspan="5">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Audit log</h2>
+    <p class="hint">Every login, upload, download, approval, rejection, and access-denied event, in order.</p>
+    <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom: 16px; flex-wrap: wrap;">
+      <div style="flex:1; min-width:140px;">
+        <label for="log_username">Username</label>
+        <input id="log_username" placeholder="filter by username" />
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <label for="log_action">Action</label>
+        <input id="log_action" placeholder="e.g. LOGIN_FAILED" />
+      </div>
+      <button class="btn-ghost" id="logFilterBtn" style="margin-bottom:0;">Apply</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>User</th><th>Action</th><th>Result</th><th>IP</th><th>Details</th></tr>
+      </thead>
+      <tbody id="logsBody"><tr class="empty-row"><td colspan="6">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  const payload = requireAuth("admin");
+  document.getElementById("whoText").innerHTML =
+    `${escapeHtml(payload.sub)} &nbsp;<span class="role-pill">admin</span>`;
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  // ---------------- Paper review ----------------
+  const papersBody = document.getElementById("papersBody");
+  let currentTab = "pending";
+
+  async function loadPapers() {
+    const res = await apiFetch(`/admin/papers?status=${currentTab}`);
+    const papers = await res.json();
+    if (!papers.length) {
+      papersBody.innerHTML = `<tr class="empty-row"><td colspan="7">No ${currentTab} papers.</td></tr>`;
+      return;
+    }
+    papersBody.innerHTML = papers.map((p) => {
+      const reasonNote = p.status === "rejected" && p.rejection_reason
+        ? `<div style="color: var(--rejected); font-size: 0.75rem; margin-top: 4px;">Reason: ${escapeHtml(p.rejection_reason)}</div>` : "";
+      const actions = p.status === "pending"
+        ? `<button class="btn-sm" onclick="approvePaper(${p.id})">Approve</button>
+           <button class="btn-danger btn-sm" onclick="rejectPaper(${p.id})">Reject</button>`
+        : `<span style="color: var(--text-muted); font-size: 0.8rem;">reviewed</span>`;
+      return `
+        <tr>
+          <td data-label="Title">${escapeHtml(p.title)}${reasonNote}</td>
+          <td data-label="Subject">${escapeHtml(p.subject)}</td>
+          <td data-label="Semester">${escapeHtml(p.semester)}</td>
+          <td data-label="Uploaded by">${escapeHtml(p.uploaded_by ?? "—")}</td>
+          <td data-label="Date" class="ts">${fmtDate(p.upload_date)}</td>
+          <td data-label="Status">${stampHtml(p.status)}</td>
+          <td data-label="Actions">${actions}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  async function approvePaper(id) {
+    const res = await apiFetch(`/admin/papers/${id}/approve`, { method: "POST" });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadPapers();
+  }
+
+  async function rejectPaper(id) {
+    const reason = prompt("Reason for rejection:");
+    if (reason === null) return;
+    if (!reason.trim()) { alert("A rejection reason is required."); return; }
+    const res = await apiFetch(`/admin/papers/${id}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadPapers();
+  }
+
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      currentTab = tab.dataset.status;
+      loadPapers();
+    });
+  });
+
+  // ---------------- User management ----------------
+  const usersBody = document.getElementById("usersBody");
+
+  async function loadUsers() {
+    const res = await apiFetch("/admin/users");
+    const users = await res.json();
+    usersBody.innerHTML = users.map((u) => {
+      const isSelf = u.username === payload.sub;
+      const disabledAttr = isSelf ? "disabled" : "";
+      return `
+        <tr>
+          <td data-label="Username">${escapeHtml(u.username)}${isSelf ? ' <span style="color:var(--text-muted); font-size:0.75rem;">(you)</span>' : ""}</td>
+          <td data-label="Email">${escapeHtml(u.email)}</td>
+          <td data-label="Role">
+            <select id="role_${u.id}" ${disabledAttr}>
+              <option value="student" ${u.role === "student" ? "selected" : ""}>student</option>
+              <option value="faculty" ${u.role === "faculty" ? "selected" : ""}>faculty</option>
+              <option value="admin" ${u.role === "admin" ? "selected" : ""}>admin</option>
+            </select>
+          </td>
+          <td data-label="Status">${u.is_active ? '<span class="stamp stamp-approved">active</span>' : '<span class="stamp stamp-rejected">inactive</span>'}</td>
+          <td data-label="Actions">
+            <button class="btn-sm" onclick="saveRole(${u.id})" ${disabledAttr}>Save role</button>
+            <button class="btn-ghost btn-sm" onclick="toggleActive(${u.id}, ${u.is_active})" ${disabledAttr}>${u.is_active ? "Deactivate" : "Activate"}</button>
+          </td>
+        </tr>`;
+    }).join("");
+  }
+
+  async function saveRole(id) {
+    const role = document.getElementById(`role_${id}`).value;
+    const res = await apiFetch(`/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadUsers();
+  }
+
+  async function toggleActive(id, currentlyActive) {
+    const res = await apiFetch(`/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !currentlyActive }),
+    });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadUsers();
+  }
+
+  // ---------------- Audit logs ----------------
+  const logsBody = document.getElementById("logsBody");
+
+  async function loadLogs() {
+    const params = new URLSearchParams({ limit: "50" });
+    const username = document.getElementById("log_username").value.trim();
+    const action = document.getElementById("log_action").value.trim();
+    if (username) params.set("username", username);
+    if (action) params.set("action", action);
+
+    const res = await apiFetch(`/admin/logs?${params.toString()}`);
+    const logs = await res.json();
+    if (!logs.length) {
+      logsBody.innerHTML = `<tr class="empty-row"><td colspan="6">No matching log entries.</td></tr>`;
+      return;
+    }
+    logsBody.innerHTML = logs.map((l) => `
+      <tr>
+        <td data-label="Time" class="ts">${new Date(l.timestamp).toLocaleString()}</td>
+        <td data-label="User">${escapeHtml(l.username ?? "—")}</td>
+        <td data-label="Action" class="mono">${escapeHtml(l.action)}</td>
+        <td data-label="Result">${l.status === "SUCCESS" ? '<span class="stamp stamp-approved">success</span>' : '<span class="stamp stamp-rejected">failure</span>'}</td>
+        <td data-label="IP" class="ts">${escapeHtml(l.ip_address ?? "—")}</td>
+        <td data-label="Details" style="color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(l.details ?? "")}</td>
+      </tr>`).join("");
+  }
+
+  document.getElementById("logFilterBtn").addEventListener("click", loadLogs);
+
+  loadPapers();
+  loadUsers();
+  loadLogs();
+</script>
+</body>
+</html>

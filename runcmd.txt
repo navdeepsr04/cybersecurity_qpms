@@ -1,0 +1,8 @@
+
+first install backend requirements
+
+# Terminal 1
+cd backend && uvicorn main:app --reload
+
+# Terminal 2 (no Node needed)
+cd frontend && python -m http.server 5500

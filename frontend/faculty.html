@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QPMS — Faculty</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">QPMS <span>·</span> Faculty</div>
+  <div class="who">
+    <a href="dashboard.html" class="btn-ghost btn-sm" style="text-decoration:none; display:inline-block;">Dashboard</a>
+    <span id="whoText"></span>
+    <button class="btn-ghost btn-sm" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<div class="page">
+
+  <div class="panel">
+    <h2>Upload a question paper</h2>
+    <p class="hint">PDF only, up to 10 MB. New uploads start as <strong>pending</strong> until an admin reviews them.</p>
+    <div id="uploadMsg" class="msg"></div>
+    <form id="uploadForm">
+      <label for="up_title">Title</label>
+      <input id="up_title" required placeholder="e.g. DBMS Midsem 2026" />
+      <label for="up_subject">Subject</label>
+      <input id="up_subject" required placeholder="e.g. DBMS" />
+      <label for="up_semester">Semester</label>
+      <input id="up_semester" required placeholder="e.g. 4" />
+      <label for="up_file">PDF file</label>
+      <input id="up_file" type="file" accept="application/pdf,.pdf" required />
+      <div class="btn-row">
+        <button type="submit" id="uploadBtn">Upload</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>My papers</h2>
+    <p class="hint">Edit or delete a paper only while it's still pending.</p>
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Subject</th><th>Semester</th><th>Uploaded</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="papersBody">
+        <tr class="empty-row"><td colspan="6">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  const payload = requireAuth("faculty");
+  document.getElementById("whoText").innerHTML =
+    `${escapeHtml(payload.sub)} &nbsp;<span class="role-pill">faculty</span>`;
+
+  const uploadForm = document.getElementById("uploadForm");
+  const uploadMsg = document.getElementById("uploadMsg");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const papersBody = document.getElementById("papersBody");
+
+  let papers = [];
+  let editingId = null;
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function renderRow(p) {
+    const isEditing = editingId === p.id;
+    const canModify = p.status === "pending";
+
+    if (isEditing) {
+      return `
+        <tr>
+          <td data-label="Title"><input id="e_title_${p.id}" value="${escapeHtml(p.title)}" /></td>
+          <td data-label="Subject"><input id="e_subject_${p.id}" value="${escapeHtml(p.subject)}" /></td>
+          <td data-label="Semester"><input id="e_semester_${p.id}" value="${escapeHtml(p.semester)}" /></td>
+          <td data-label="Uploaded" class="ts">${fmtDate(p.upload_date)}</td>
+          <td data-label="Status">${stampHtml(p.status)}</td>
+          <td data-label="Actions">
+            <button class="btn-sm" onclick="saveEdit(${p.id})">Save</button>
+            <button class="btn-ghost btn-sm" onclick="cancelEdit()">Cancel</button>
+          </td>
+        </tr>`;
+    }
+
+    const rejectionNote = p.status === "rejected" && p.rejection_reason
+      ? `<div style="color: var(--rejected); font-size: 0.75rem; margin-top: 4px;">Reason: ${escapeHtml(p.rejection_reason)}</div>` : "";
+
+    return `
+      <tr>
+        <td data-label="Title">${escapeHtml(p.title)}${rejectionNote}</td>
+        <td data-label="Subject">${escapeHtml(p.subject)}</td>
+        <td data-label="Semester">${escapeHtml(p.semester)}</td>
+        <td data-label="Uploaded" class="ts">${fmtDate(p.upload_date)}</td>
+        <td data-label="Status">${stampHtml(p.status)}</td>
+        <td data-label="Actions">
+          <button class="btn-ghost btn-sm" onclick="startEdit(${p.id})" ${canModify ? "" : "disabled"}>Edit</button>
+          <button class="btn-danger btn-sm" onclick="deletePaper(${p.id})" ${canModify ? "" : "disabled"}>Delete</button>
+        </td>
+      </tr>`;
+  }
+
+  function render() {
+    if (papers.length === 0) {
+      papersBody.innerHTML = `<tr class="empty-row"><td colspan="6">No papers uploaded yet.</td></tr>`;
+      return;
+    }
+    papersBody.innerHTML = papers.map(renderRow).join("");
+  }
+
+  async function loadPapers() {
+    const res = await apiFetch("/papers/mine");
+    papers = await res.json();
+    editingId = null;
+    render();
+  }
+
+  function startEdit(id) { editingId = id; render(); }
+  function cancelEdit() { editingId = null; render(); }
+
+  async function saveEdit(id) {
+    const payload = {
+      title: document.getElementById(`e_title_${id}`).value.trim(),
+      subject: document.getElementById(`e_subject_${id}`).value.trim(),
+      semester: document.getElementById(`e_semester_${id}`).value.trim(),
+    };
+    const res = await apiFetch(`/papers/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadPapers();
+  }
+
+  async function deletePaper(id) {
+    if (!confirm("Delete this paper? This cannot be undone.")) return;
+    const res = await apiFetch(`/papers/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert(await readError(res)); return; }
+    await loadPapers();
+  }
+
+  uploadForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideMsg(uploadMsg);
+    const fileInput = document.getElementById("up_file");
+    if (!fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append("title", document.getElementById("up_title").value.trim());
+    formData.append("subject", document.getElementById("up_subject").value.trim());
+    formData.append("semester", document.getElementById("up_semester").value.trim());
+    formData.append("file", fileInput.files[0]);
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = "Uploading...";
+    try {
+      // No Content-Type header here on purpose: the browser sets
+      // multipart/form-data with the correct boundary itself when the
+      // body is a FormData object.
+      const res = await apiFetch("/papers/upload", { method: "POST", body: formData });
+      if (!res.ok) { showMsg(uploadMsg, await readError(res), "error"); return; }
+      showMsg(uploadMsg, "Uploaded. Awaiting admin review.", "success");
+      uploadForm.reset();
+      await loadPapers();
+    } finally {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = "Upload";
+    }
+  });
+
+  loadPapers();
+</script>
+</body>
+</html>
